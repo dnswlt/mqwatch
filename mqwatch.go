@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"time"
@@ -17,9 +15,9 @@ const (
 )
 
 type message struct {
-	body       []byte
-	routingKey string
-	received   time.Time
+	Body       []byte
+	RoutingKey string
+	Received   time.Time
 }
 type query struct {
 	text   []byte
@@ -50,7 +48,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery) {
 			log.Printf("Received request: %s\n", string(q.text))
 			var r []message
 			for _, m := range buf {
-				if bytes.Contains(m.body, q.text) {
+				if bytes.Contains(m.Body, q.text) {
 					r = append(r, m)
 				}
 			}
@@ -62,19 +60,25 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery) {
 func frequencies(ms []message) map[string]int {
 	freq := make(map[string]int)
 	for _, m := range ms {
-		cnt, ok := freq[m.routingKey]
+		cnt, ok := freq[m.RoutingKey]
 		if ok {
-			freq[m.routingKey] = cnt + 1
+			freq[m.RoutingKey] = cnt + 1
 		} else {
-			freq[m.routingKey] = 1
+			freq[m.RoutingKey] = 1
 		}
 	}
 	return freq
 }
 
+type indexContent struct {
+	Created     time.Time
+	Frequencies map[string]int
+	Messages    []message
+}
+
 func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		reqStr := r.URL.Query().Get("s")
+		reqStr := r.URL.Query().Get("q")
 		if len(reqStr) < 3 {
 			log.Printf("Request string too short: %s\n", reqStr)
 			return
@@ -82,16 +86,12 @@ func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request)
 		respch := make(chan []message)
 		querych <- query{[]byte(reqStr), respch}
 		ms := <-respch
+		t := TemplateIndexHtml()
 		w.Header().Set("Content-Type", "text/html")
-		t, err := template.ParseFiles("templates/index.html")
-		fmt.Fprintf(w, "Found %d items\n", len(ms))
-		fmt.Fprintf(w, "Routing key frequencies:\n")
-		for rk, freq := range frequencies(ms) {
-			fmt.Fprintf(w, "\t%s: %d\n", rk, freq)
-		}
-		for _, m := range ms {
-			fmt.Fprintf(w, "Item %s on %s:\n\t%s\n", m.received.Format(time.RFC3339Nano), m.routingKey, string(m.body))
-		}
+		t.Execute(w, indexContent{
+			Created:     time.Now(),
+			Frequencies: frequencies(ms),
+			Messages:    ms})
 	}
 }
 
