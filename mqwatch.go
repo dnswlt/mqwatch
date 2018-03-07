@@ -30,6 +30,9 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery) {
 		select {
 		case msg := <-msgs:
 			var m interface{}
+			if msg.RoutingKey == "betriebsabbild.lenkereignisse.update" {
+				break
+			}
 			err := json.Unmarshal(msg.Body, &m)
 			if err != nil {
 				log.Printf("Could not Unmarshal: %s\n\"%s\"\n", string(msg.Body), err)
@@ -45,7 +48,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery) {
 				buf = buf[l-MAX_BUF:]
 			}
 		case q := <-reqs:
-			log.Printf("Received request: %s\n", string(q.text))
+			log.Printf("Processing query: %s\n", string(q.text))
 			var r []message
 			for _, m := range buf {
 				if bytes.Contains(m.Body, q.text) {
@@ -78,6 +81,9 @@ type indexContent struct {
 
 func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			return
+		}
 		reqStr := r.URL.Query().Get("q")
 		if len(reqStr) < 3 {
 			log.Printf("Request string too short: %s\n", reqStr)

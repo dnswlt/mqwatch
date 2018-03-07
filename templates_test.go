@@ -13,7 +13,7 @@ func TestIndexHtml(t *testing.T) {
 	err := tpl.Execute(buf, indexContent{
 		Created:     time.Now(),
 		Frequencies: map[string]int{"a": 1, "b": 2},
-		Messages:    []message{message{[]byte("abc"), "routing.key", tm}}})
+		Messages:    []message{message{[]byte(`{"a": 100}`), "routing.key", tm}}})
 	if err != nil {
 		t.Error("Failed to write template", err)
 	}

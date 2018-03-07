@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"html/template"
+	"time"
 )
 
 const (
@@ -21,6 +24,7 @@ body {
 }
 .message .routingkey {
   font-family: Courier New, monospace;
+	background-color: lightblue;
 }
   </style>
 </head>
@@ -42,8 +46,8 @@ body {
   <h1>Messages</h1>
   {{range .Messages}}
   <div class="message">
-    <span class="received">{{.Received}}</span> <span class="routingkey">{{.RoutingKey}}</span>
-    <div class="content">{{String .Body}}</div>
+    <span class="received">{{DateFmt .Received}}</span> <span class="routingkey">{{.RoutingKey}}</span>
+    <div class="content"><pre>{{MessageFmt .Body}}</pre></div>
   </div>
   {{end}}
 </body>
@@ -51,8 +55,18 @@ body {
 `
 )
 
+func MessageFmt(bs []byte) string {
+	var out bytes.Buffer
+	json.Indent(&out, bs, "", "  ")
+	return out.String()
+}
+
+func DateFmt(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05.000")
+}
+
 func TemplateIndexHtml() *template.Template {
 	return template.Must(template.New("index.html").
-		Funcs(template.FuncMap{"String": func(bs []byte) string { return string(bs) }}).
+		Funcs(template.FuncMap{"MessageFmt": MessageFmt, "DateFmt": DateFmt}).
 		Parse(indexHtml))
 }
