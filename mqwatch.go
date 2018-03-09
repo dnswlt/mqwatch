@@ -3,29 +3,57 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/streadway/amqp"
 )
 
-const (
-	MAX_BUF = 100000
-)
-
+// message contains info about a single message, as stored in the in-mem buffer
 type message struct {
+	Seq        int64
 	Body       []byte
 	RoutingKey string
 	Received   time.Time
-}
-type query struct {
-	text   []byte
-	respch chan []message
+	ClassName  string
 }
 
-func receive(reqs <-chan query, msgs <-chan amqp.Delivery) {
+// query contains the query text and the channel on which to send the query response
+type query struct {
+	text   []byte
+	respch chan queryResult
+}
+
+type queryResult struct {
+	messages []message
+	seq      int64
+}
+
+// config contains all configurable parameters of the application
+type config struct {
+	url        string
+	exchange   string
+	key        string
+	port       int
+	bufferSize int
+	maxResults int
+}
+
+func min(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 	var buf []message
+	var seq int64
+	maxBuf := int(float64(cfg.bufferSize) * 1.2)
 	for {
 		select {
 		case msg := <-msgs:
@@ -42,41 +70,51 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery) {
 			if err != nil {
 				log.Fatal("Could not marshal", err)
 			}
-			buf = append(buf, message{js, msg.RoutingKey, time.Now()})
+			className, _ := msg.Headers["__ClassName__"].(string)
+			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), className})
+			seq++
 			l := len(buf)
-			if l > MAX_BUF*1.2 {
-				buf = buf[l-MAX_BUF:]
+			if l > maxBuf {
+				buf = buf[l-cfg.bufferSize:]
 			}
 		case q := <-reqs:
 			log.Printf("Processing query: %s\n", string(q.text))
 			var r []message
-			for _, m := range buf {
-				if bytes.Contains(m.Body, q.text) {
-					r = append(r, m)
+			if string(q.text) == "*" {
+				l := min(len(buf), cfg.maxResults)
+				r = make([]message, l)
+				copy(r, buf[len(buf)-l:len(buf)])
+			} else {
+				for i := len(buf) - 1; i >= 0; i-- {
+					if bytes.Contains(buf[i].Body, q.text) {
+						r = append(r, buf[i])
+						if len(r) == cfg.maxResults {
+							break
+						}
+					}
 				}
 			}
-			q.respch <- r
+			q.respch <- queryResult{messages: r, seq: seq}
 		}
 	}
 }
 
 func frequencies(ms []message) map[string]int {
+	re := regexp.MustCompile("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}")
+	f := func(key string) string {
+		return re.ReplaceAllString(key, "<uuid>")
+	}
 	freq := make(map[string]int)
 	for _, m := range ms {
-		cnt, ok := freq[m.RoutingKey]
+		key := f(m.RoutingKey)
+		cnt, ok := freq[key]
 		if ok {
-			freq[m.RoutingKey] = cnt + 1
+			freq[key] = cnt + 1
 		} else {
-			freq[m.RoutingKey] = 1
+			freq[key] = 1
 		}
 	}
 	return freq
-}
-
-type indexContent struct {
-	Created     time.Time
-	Frequencies map[string]int
-	Messages    []message
 }
 
 func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request) {
@@ -85,26 +123,43 @@ func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request)
 			return
 		}
 		reqStr := r.URL.Query().Get("q")
-		if len(reqStr) < 3 {
+		var result queryResult
+		if len(reqStr) < 3 && reqStr != "*" {
 			log.Printf("Request string too short: %s\n", reqStr)
-			return
+		} else {
+			respch := make(chan queryResult)
+			querych <- query{[]byte(reqStr), respch}
+			result = <-respch
 		}
-		respch := make(chan []message)
-		querych <- query{[]byte(reqStr), respch}
-		ms := <-respch
-		t := TemplateIndexHtml()
+		t := templateIndexHTML()
 		w.Header().Set("Content-Type", "text/html")
-		t.Execute(w, indexContent{
-			Created:     time.Now(),
-			Frequencies: frequencies(ms),
-			Messages:    ms})
+		t.Execute(w, indexHTMLContent{
+			Created:       time.Now(),
+			Frequencies:   frequencies(result.messages),
+			Messages:      result.messages,
+			Query:         reqStr,
+			ReceivedTotal: result.seq})
 	}
 }
 
+func parseArgs() config {
+	url := flag.String("url", "amqp://localhost:5672/", "URL to connect to")
+	exchange := flag.String("exchange", "lenkung", "Exchange to bind to")
+	key := flag.String("key", "#", "Routing key to use in queue binding")
+	port := flag.Int("port", 9090, "TCP port web UI")
+	buf := flag.Int("buf", 100000, "Number of messages kept in memory")
+	maxresult := flag.Int("maxresult", 1000, "Max. number of messages returned for query")
+	flag.Parse()
+	return config{url: *url, exchange: *exchange, key: *key, port: *port, bufferSize: *buf, maxResults: *maxresult}
+}
+
 func main() {
-	conn, err := amqp.Dial("amqp://localhost:5672/")
+	cfg := parseArgs()
+	conn, err := amqp.Dial(cfg.url)
 	if err != nil {
 		log.Fatal("Could not connect", err)
+	} else {
+		log.Printf("Connected to %s\n", cfg.url)
 	}
 	defer conn.Close()
 	ch, err := conn.Channel()
@@ -112,8 +167,7 @@ func main() {
 		log.Fatal("Could not get a channel", err)
 	}
 	defer ch.Close()
-	// func (ch *Channel) ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args Table) error {
-	err = ch.ExchangeDeclare("lenkung", "topic", false, false, false, false, nil)
+	err = ch.ExchangeDeclare(cfg.exchange, "topic", false, false, false, false, nil)
 	if err != nil {
 		log.Fatal("Could not declare exchange", err)
 	}
@@ -121,7 +175,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Could not declare queue", err)
 	}
-	err = ch.QueueBind(q.Name, "#", "lenkung", false, nil)
+	err = ch.QueueBind(q.Name, cfg.key, "lenkung", false, nil)
 	if err != nil {
 		log.Fatal("Could not bind queue", err)
 	}
@@ -130,8 +184,8 @@ func main() {
 		log.Fatal("Could not consume", err)
 	}
 	querych := make(chan query)
-	go receive(querych, msgs)
-
+	go receive(querych, msgs, cfg)
 	http.HandleFunc("/", queryHandler(querych))
-	log.Fatal(http.ListenAndServe(":9090", nil))
+	log.Printf("Listening on :%d\n", cfg.port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.port), nil))
 }

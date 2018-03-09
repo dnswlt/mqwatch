@@ -7,16 +7,15 @@ import (
 )
 
 func TestIndexHtml(t *testing.T) {
-	tpl := TemplateIndexHtml()
+	tpl := templateIndexHTML()
 	tm := time.Date(2018, 1, 31, 18, 59, 30, 123456789, time.Local)
 	buf := new(bytes.Buffer)
-	err := tpl.Execute(buf, indexContent{
+	err := tpl.Execute(buf, indexHTMLContent{
 		Created:     time.Now(),
 		Frequencies: map[string]int{"a": 1, "b": 2},
-		Messages:    []message{message{[]byte(`{"a": 100}`), "routing.key", tm}}})
+		Messages:    []message{message{0, []byte(`{"a": 100}`), "routing.key", tm, "clazz"}},
+		Query:       "abcde"})
 	if err != nil {
 		t.Error("Failed to write template", err)
 	}
-	s := buf.String()
-	t.Log("UFFE", s)
 }
