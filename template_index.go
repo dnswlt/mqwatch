@@ -54,7 +54,7 @@ tr {
   <h1>Messages</h1>
   {{range .Messages}}
   <div class="message">
-    <div class="header">{{DateFmt .Received}} (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}}</div>
+    <div class="header">{{DateFmt .Received}} ({{.Sender}}@{{DateFmt .Sent}}) (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}}</div>
     <div class="content"><pre>{{MessageFmt .Body}}</pre></div>
   </div>
   {{end}}

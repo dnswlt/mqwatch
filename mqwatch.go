@@ -22,7 +22,9 @@ type message struct {
 	Body       []byte
 	RoutingKey string
 	Received   time.Time
+	Sent       time.Time
 	ClassName  string
+	Sender     string
 }
 
 // query contains the query text and the channel on which to send the query response
@@ -138,7 +140,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 			}
 			className, _ := msg.Headers["__ClassName__"].(string)
 			// Unfortunately, msg.Timestamp is empty, so we can't use it.
-			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), className})
+			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), msg.Timestamp, className, msg.AppId})
 			seq++
 			l := len(buf)
 			if l > maxBuf {
