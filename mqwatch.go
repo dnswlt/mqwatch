@@ -137,6 +137,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 				log.Fatal("Could not marshal", err)
 			}
 			className, _ := msg.Headers["__ClassName__"].(string)
+			// Unfortunately, msg.Timestamp is empty, so we can't use it.
 			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), className})
 			seq++
 			l := len(buf)
