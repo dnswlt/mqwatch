@@ -6,8 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -24,10 +27,22 @@ type message struct {
 
 // query contains the query text and the channel on which to send the query response
 type query struct {
-	text   []byte
-	respch chan queryResult
+	rawQuery string
+	spec     []querySpec
+	respch   chan queryResult
 }
 
+// querySpec represents a structured query:
+// words that need to be present in the message, fields that need to exist with specific values
+// range of sequence number.
+type querySpec struct {
+	words      []string
+	routingKey string
+	seqFrom    int64
+	seqTo      int64
+}
+
+// queryResult contains the messages matching a query and the current sequence number (i.e. the number of msgs received so far)
 type queryResult struct {
 	messages []message
 	seq      int64
@@ -43,11 +58,62 @@ type config struct {
 	maxResults int
 }
 
-func min(a int, b int) int {
-	if a < b {
-		return a
+func parseSpec(input string) []querySpec {
+	splt := regexp.MustCompile("\n|,")
+	ws := regexp.MustCompile(" +")
+	exp := regexp.MustCompile(`(\w+):(.*)|#(\d+)?-(\d+)?`)
+	var result []querySpec
+	for _, line := range splt.Split(input, -1) {
+		spec := querySpec{seqTo: math.MaxInt64}
+		for _, tok := range ws.Split(line, -1) {
+			sm := exp.FindStringSubmatch(tok)
+			if sm != nil {
+				if len(sm[1]) > 0 {
+					switch sm[1] {
+					case "key":
+						spec.routingKey = sm[2]
+					}
+				} else {
+					if len(sm[3]) > 0 {
+						from, _ := strconv.Atoi(sm[3])
+						spec.seqFrom = int64(from)
+					}
+					if len(sm[4]) > 0 {
+						to, _ := strconv.Atoi(sm[4])
+						spec.seqTo = int64(to)
+					}
+				}
+			} else {
+				spec.words = append(spec.words, tok)
+			}
+		}
+		result = append(result, spec)
 	}
-	return b
+	return result
+}
+
+func accept1(m message, spec querySpec) bool {
+	if spec.seqFrom > m.Seq || spec.seqTo < m.Seq {
+		return false
+	}
+	for _, w := range spec.words {
+		if !bytes.Contains(m.Body, []byte(w)) {
+			return false
+		}
+	}
+	if !strings.Contains(m.RoutingKey, spec.routingKey) {
+		return false
+	}
+	return true
+}
+
+func accept(m message, specs []querySpec) bool {
+	for _, spec := range specs {
+		if accept1(m, spec) {
+			return true
+		}
+	}
+	return false
 }
 
 func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
@@ -78,15 +144,18 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 				buf = buf[l-cfg.bufferSize:]
 			}
 		case q := <-reqs:
-			log.Printf("Processing query: %s\n", string(q.text))
+			log.Printf("Processing query: %s\n", q.rawQuery)
 			var r []message
-			if string(q.text) == "*" {
-				l := min(len(buf), cfg.maxResults)
+			if string(q.rawQuery) == "*" {
+				l := cfg.maxResults
+				if len(buf) < l {
+					l = len(buf)
+				}
 				r = make([]message, l)
 				copy(r, buf[len(buf)-l:len(buf)])
 			} else {
 				for i := len(buf) - 1; i >= 0; i-- {
-					if bytes.Contains(buf[i].Body, q.text) {
+					if accept(buf[i], q.spec) {
 						r = append(r, buf[i])
 						if len(r) == cfg.maxResults {
 							break
@@ -128,7 +197,7 @@ func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request)
 			log.Printf("Request string too short: %s\n", reqStr)
 		} else {
 			respch := make(chan queryResult)
-			querych <- query{[]byte(reqStr), respch}
+			querych <- query{reqStr, parseSpec(reqStr), respch}
 			result = <-respch
 		}
 		t := templateIndexHTML()

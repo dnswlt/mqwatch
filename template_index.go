@@ -20,12 +20,11 @@ tr {
   text-align: left;
 }
 .message .content {
-  background-color: lightyellow;
   font-family: Courier New, monospace;
+  font-size: 9pt;
 }
-.message .routingkey {
-  font-family: Courier New, monospace;
-	background-color: lightblue;
+.message .header {
+	background-color: #b3e6ff;
 }
   </style>
 </head>
@@ -55,7 +54,7 @@ tr {
   <h1>Messages</h1>
   {{range .Messages}}
   <div class="message">
-    <span class="received">{{DateFmt .Received}}</span> (#{{.Seq}}) <span class="routingkey">{{.RoutingKey}}</span> <span>{{.ClassName}}</span>
+    <div class="header">{{DateFmt .Received}} (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}}</div>
     <div class="content"><pre>{{MessageFmt .Body}}</pre></div>
   </div>
   {{end}}
