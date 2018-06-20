@@ -247,7 +247,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Could not declare queue", err)
 	}
-	err = ch.QueueBind(q.Name, cfg.key, "lenkung", false, nil)
+	err = ch.QueueBind(q.Name, cfg.key, cfg.exchange, false, nil)
 	if err != nil {
 		log.Fatal("Could not bind queue", err)
 	}
