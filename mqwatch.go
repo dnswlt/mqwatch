@@ -119,6 +119,13 @@ func accept(m message, specs []querySpec) bool {
 }
 
 func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
+
+	var reverse = func(buf []message) {
+		for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
+			buf[i], buf[j] = buf[j], buf[i]
+		}
+	}
+
 	var buf []message
 	var seq int64
 	maxBuf := int(float64(cfg.bufferSize) * 1.2)
@@ -165,6 +172,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 						}
 					}
 				}
+				reverse(r)
 			}
 			q.respch <- queryResult{messages: r, seq: seq}
 		}

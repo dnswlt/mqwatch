@@ -35,8 +35,8 @@ tr {
 	<input type="text" name="q" size="80" value="{{.Query}}">
 	<input type="submit" value="Query">
 	</form>
-  <p>Use <code>key:&lt;routing-key&gt;</code> to search by routing key, <code>M:N</code> to filter by sequence number range. Everything else is interpreted 
-  as a search term of the message body.
+  <p>Use <code>key:&lt;routing-key&gt;</code> to search by routing key, <code>M:N</code> to filter by sequence number range, <code>*</code> to retrieve all messages. 
+  Everything else is interpreted as a search term of the message body.
   {{if .Frequencies}}
 	<h1>Frequencies</h1>
   <table>
