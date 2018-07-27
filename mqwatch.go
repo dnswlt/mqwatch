@@ -25,6 +25,8 @@ type message struct {
 	Sent       time.Time
 	ClassName  string
 	Sender     string
+	Headers    amqp.Table
+	CorrelationId string
 }
 
 // query contains the query text and the channel on which to send the query response
@@ -133,9 +135,6 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 		select {
 		case msg := <-msgs:
 			var m interface{}
-			if msg.RoutingKey == "betriebsabbild.lenkereignisse.update" {
-				break
-			}
 			err := json.Unmarshal(msg.Body, &m)
 			if err != nil {
 				log.Printf("Could not Unmarshal: %s\n\"%s\"\n", string(msg.Body), err)
@@ -147,7 +146,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 			}
 			className, _ := msg.Headers["__ClassName__"].(string)
 			// Unfortunately, msg.Timestamp is empty, so we can't use it.
-			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), msg.Timestamp, className, msg.AppId})
+			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), msg.Timestamp, className, msg.AppId, msg.Headers, msg.CorrelationId})
 			seq++
 			l := len(buf)
 			if l > maxBuf {
