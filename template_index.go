@@ -56,13 +56,15 @@ tr {
   <h1>Messages</h1>
   {{range .Messages}}
   <div class="message">
-    <div class="header">{{DateFmt .Received}} ({{.Sender}}@{{DateFmt .Sent}}) (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}}</div>
-    <div class="content"><pre>{{MessageFmt .Body}}</pre></div>
+    <div class="header">{{DateFmt .Received}} ({{.Sender}}@{{DateFmt .Sent}}) (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}} {{.CorrelationId}}</div>
+    <div class="content">Headers:<pre>{{HeaderFmt .Headers}}</pre></div>
+    <div class="content">Body:<pre>{{MessageFmt .Body}}</pre></div>
   </div>
   {{end}}
 	{{else}}
 	<p>No messages.</p>
-	{{end}}
+  {{end}}
+  <p>EOT</p>
 </body>
 </html>
 `
@@ -79,6 +81,10 @@ type indexHTMLContent struct {
 // templateIndexHTML returns the template for the index.html page.
 func templateIndexHTML() *template.Template {
 	return template.Must(template.New("index.html").
-		Funcs(template.FuncMap{"MessageFmt": MessageFmt, "DateFmt": DateFmt}).
+    Funcs(template.FuncMap{
+      "MessageFmt": MessageFmt, 
+      "HeaderFmt": HeaderFmt, 
+      "DateFmt": DateFmt,
+    }).
 		Parse(indexHTML))
 }
