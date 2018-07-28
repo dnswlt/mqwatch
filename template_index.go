@@ -19,12 +19,21 @@ body {
 tr {
   text-align: left;
 }
+.message {
+  margin-bottom: 1ex;
+}
 .message .content {
   font-family: Courier New, monospace;
   font-size: 9pt;
 }
-.message .header {
+.header {
+  background-color: #dfdfdf;
+}
+.message .metainfo {
 	background-color: #b3e6ff;
+}
+.content pre {
+  margin: 0;
 }
   </style>
 </head>
@@ -56,15 +65,16 @@ tr {
   <h1>Messages</h1>
   {{range .Messages}}
   <div class="message">
-    <div class="header">{{DateFmt .Received}} ({{.Sender}}@{{DateFmt .Sent}}) (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}} {{.CorrelationId}}</div>
-    <div class="content">Headers:<pre>{{HeaderFmt .Headers}}</pre></div>
-    <div class="content">Body:<pre>{{MessageFmt .Body}}</pre></div>
+    <div class="metainfo">{{DateFmt .Received}} ({{.Sender}}@{{DateFmt .Sent}}) (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}} {{.CorrelationID}}</div>
+    <div class="content">
+      <div class="header"><pre>{{HeaderFmt .Headers}}</pre></div>
+      <div class="body"><pre>{{MessageFmt .Body}}</pre></div>
+    </div>
   </div>
   {{end}}
 	{{else}}
 	<p>No messages.</p>
   {{end}}
-  <p>EOT</p>
 </body>
 </html>
 `

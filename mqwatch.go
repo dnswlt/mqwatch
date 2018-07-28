@@ -26,7 +26,7 @@ type message struct {
 	ClassName     string
 	Sender        string
 	Headers       amqp.Table
-	CorrelationId string
+	CorrelationID string
 }
 
 // query contains the query text and the channel on which to send the query response
@@ -212,12 +212,15 @@ func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request)
 		}
 		t := templateIndexHTML()
 		w.Header().Set("Content-Type", "text/html")
-		t.Execute(w, indexHTMLContent{
+		err := t.Execute(w, indexHTMLContent{
 			Created:       time.Now(),
 			Frequencies:   frequencies(result.messages),
 			Messages:      result.messages,
 			Query:         reqStr,
 			ReceivedTotal: result.seq})
+		if err != nil {
+			log.Printf("Shit happened: %v\n", err)
+		}
 	}
 }
 
