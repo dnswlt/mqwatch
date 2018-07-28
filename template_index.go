@@ -81,10 +81,10 @@ type indexHTMLContent struct {
 // templateIndexHTML returns the template for the index.html page.
 func templateIndexHTML() *template.Template {
 	return template.Must(template.New("index.html").
-    Funcs(template.FuncMap{
-      "MessageFmt": MessageFmt, 
-      "HeaderFmt": HeaderFmt, 
-      "DateFmt": DateFmt,
-    }).
+		Funcs(template.FuncMap{
+			"MessageFmt": MessageFmt,
+			"HeaderFmt":  HeaderFmt,
+			"DateFmt":    DateFmt,
+		}).
 		Parse(indexHTML))
 }

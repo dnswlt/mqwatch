@@ -18,14 +18,14 @@ import (
 
 // message contains info about a single message, as stored in the in-mem buffer
 type message struct {
-	Seq        int64
-	Body       []byte
-	RoutingKey string
-	Received   time.Time
-	Sent       time.Time
-	ClassName  string
-	Sender     string
-	Headers    amqp.Table
+	Seq           int64
+	Body          []byte
+	RoutingKey    string
+	Received      time.Time
+	Sent          time.Time
+	ClassName     string
+	Sender        string
+	Headers       amqp.Table
 	CorrelationId string
 }
 

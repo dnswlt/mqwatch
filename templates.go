@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -21,7 +23,7 @@ func DateFmt(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05.000")
 }
 
-// Formats the header attributes
+// HeaderFmt formats the header attributes
 func HeaderFmt(header amqp.Table) string {
 	var keys []string
 	for k := range header {
@@ -29,18 +31,9 @@ func HeaderFmt(header amqp.Table) string {
 	}
 	sort.Strings(keys)
 
-	var out bytes.Buffer
+	var out strings.Builder
 	for _, k := range keys {
-		out.WriteString(k)
-		out.WriteString(" = ")
-		value, err := json.Marshal(header[k])
-		if err != nil {
-			out.WriteString("Error printing value: ")
-			out.WriteString(err.Error())
-		} else {
-			out.WriteString(string(value))
-		}
-		out.WriteString("\n")
+		fmt.Fprintf(&out, "%s: %v\n", k, header[k])
 	}
 
 	return out.String()
