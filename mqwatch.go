@@ -55,7 +55,7 @@ type queryResult struct {
 // config contains all configurable parameters of the application
 type config struct {
 	url        string
-	exchange   string
+	exchanges  []string
 	key        string
 	port       int
 	bufferSize int
@@ -226,13 +226,19 @@ func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request)
 
 func parseArgs() config {
 	url := flag.String("url", "amqp://localhost:5672/", "URL to connect to")
-	exchange := flag.String("exchange", "lenkung", "Exchange to bind to")
+	exchange := flag.String("exchange", "lenkung", "Exchange(s) to bind to (comma separated)")
 	key := flag.String("key", "#", "Routing key to use in queue binding")
 	port := flag.Int("port", 9090, "TCP port web UI")
 	buf := flag.Int("buf", 100000, "Number of messages kept in memory")
 	maxresult := flag.Int("maxresult", 1000, "Max. number of messages returned for query")
 	flag.Parse()
-	return config{url: *url, exchange: *exchange, key: *key, port: *port, bufferSize: *buf, maxResults: *maxresult}
+	var exchanges []string
+	if strings.Contains(*exchange, ",") {
+		exchanges = strings.Split(*exchange, ",")
+	} else {
+		exchanges = append(exchanges, *exchange)
+	}
+	return config{url: *url, exchanges: exchanges, key: *key, port: *port, bufferSize: *buf, maxResults: *maxresult}
 }
 
 func main() {
@@ -249,17 +255,19 @@ func main() {
 		log.Fatal("Could not get a channel", err)
 	}
 	defer ch.Close()
-	err = ch.ExchangeDeclare(cfg.exchange, "topic", false, false, false, false, nil)
-	if err != nil {
-		log.Fatal("Could not declare exchange", err)
-	}
 	q, err := ch.QueueDeclare("", false, true, true, false, nil)
 	if err != nil {
 		log.Fatal("Could not declare queue", err)
 	}
-	err = ch.QueueBind(q.Name, cfg.key, cfg.exchange, false, nil)
-	if err != nil {
-		log.Fatal("Could not bind queue", err)
+	for _, exchange := range cfg.exchanges {
+		err = ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil)
+		if err != nil {
+			log.Fatal("Could not declare topic exchange", err)
+		}
+		err = ch.QueueBind(q.Name, cfg.key, exchange, false, nil)
+		if err != nil {
+			log.Fatal("Could not bind queue", err)
+		}
 	}
 	msgs, err := ch.Consume(q.Name, "", true, false, false, false, nil)
 	if err != nil {
@@ -268,6 +276,6 @@ func main() {
 	querych := make(chan query)
 	go receive(querych, msgs, cfg)
 	http.HandleFunc("/", queryHandler(querych))
-	log.Printf("Listening on :%d\n", cfg.port)
+	log.Printf("Listening on :%d, exchanges %v, routing key \"%s\"\n", cfg.port, cfg.exchanges, cfg.key)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.port), nil))
 }
