@@ -3,19 +3,19 @@
 Binds a queue to a RabbitMQ topic exchange and listens for messages for a given routing key.
 Expects messages to be UTF-8 encoded JSON.
 
-    Usage:
-    -buf int
-            Number of messages kept in memory (default 100000)
-    -exchange string
-            Exchange to bind to (default "lenkung")
-    -key string
-            Routing key to use in queue binding (default "#")
-    -maxresult int
-            Max. number of messages returned for query (default 1000)
-    -port int
-            TCP port web UI (default 9090)
-    -url string
-            URL to connect to (default "amqp://localhost:5672/")
+        Usage of C:\devsbb\go\bin\mqwatch.exe:
+        -buf int
+                Number of messages kept in memory (default 100000)
+        -exchange string
+                Exchange(s) to bind to (comma separated) (default "lenkung")
+        -key string
+                Routing key to use in queue binding (default "#")
+        -maxresult int
+                Max. number of messages returned for query (default 1000)
+        -port int
+                TCP port web UI (default 9090)
+        -url string
+                URL to connect to (default "amqp://localhost:5672/")
 
 Open http://localhost:9090 and fire some queries.
 
