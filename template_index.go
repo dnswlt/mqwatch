@@ -35,10 +35,16 @@ tr {
 .content pre {
   margin: 0;
 }
+.simplebutton {
+  display: inline;
+}
   </style>
 </head>
 <body>
   Timestamp: {{DateFmt .Created}}, Total messages received: {{.ReceivedTotal}}
+  <form class="simplebutton" method="POST" action="/clear">
+    <input type="submit" name="submit" value="Clear">
+  </form>
 	<h1>Query</h1>
 	<form method="get" action="/">
 	<input type="text" name="q" size="80" value="{{.Query}}">

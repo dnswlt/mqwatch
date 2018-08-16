@@ -1,6 +1,6 @@
 # mqwatch 
 
-Binds a queue to a RabbitMQ topic exchange and listens for messages for a given routing key.
+Binds a queue to one or more RabbitMQ topic exchanges and listens for messages for a given routing key.
 Expects messages to be UTF-8 encoded JSON.
 
         Usage of C:\devsbb\go\bin\mqwatch.exe:

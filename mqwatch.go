@@ -120,7 +120,7 @@ func accept(m message, specs []querySpec) bool {
 	return false
 }
 
-func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
+func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, cfg config) {
 
 	var reverse = func(buf []message) {
 		for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
@@ -133,6 +133,15 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, cfg config) {
 	maxBuf := int(float64(cfg.bufferSize) * 1.2)
 	for {
 		select {
+		case cmd := <-ctrl:
+			switch cmd {
+			case "clear":
+				l := len(buf)
+				buf = nil
+				log.Printf("Cleared message buffer (%d messages deleted)\n", l)
+			default:
+				log.Printf("Unknown control command %s\n", cmd)
+			}
 		case msg := <-msgs:
 			var m interface{}
 			err := json.Unmarshal(msg.Body, &m)
@@ -196,30 +205,35 @@ func frequencies(ms []message) map[string]int {
 	return freq
 }
 
-func queryHandler(querych chan<- query) func(http.ResponseWriter, *http.Request) {
+func handleIndex(querych chan<- query, reqStr string, w http.ResponseWriter) {
+	var result queryResult
+	if len(reqStr) < 3 && reqStr != "*" && reqStr != "" {
+		log.Printf("Request string too short: %s\n", reqStr)
+	} else if reqStr != "" {
+		respch := make(chan queryResult)
+		querych <- query{reqStr, parseSpec(reqStr), respch}
+		result = <-respch
+	}
+	t := templateIndexHTML()
+	w.Header().Set("Content-Type", "text/html")
+	err := t.Execute(w, indexHTMLContent{
+		Created:       time.Now(),
+		Frequencies:   frequencies(result.messages),
+		Messages:      result.messages,
+		Query:         reqStr,
+		ReceivedTotal: result.seq})
+	if err != nil {
+		log.Printf("Shit happened: %v\n", err)
+	}
+}
+
+func queryHandler(querych chan<- query, ctrlch chan<- string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			return
-		}
-		reqStr := r.URL.Query().Get("q")
-		var result queryResult
-		if len(reqStr) < 3 && reqStr != "*" {
-			log.Printf("Request string too short: %s\n", reqStr)
-		} else {
-			respch := make(chan queryResult)
-			querych <- query{reqStr, parseSpec(reqStr), respch}
-			result = <-respch
-		}
-		t := templateIndexHTML()
-		w.Header().Set("Content-Type", "text/html")
-		err := t.Execute(w, indexHTMLContent{
-			Created:       time.Now(),
-			Frequencies:   frequencies(result.messages),
-			Messages:      result.messages,
-			Query:         reqStr,
-			ReceivedTotal: result.seq})
-		if err != nil {
-			log.Printf("Shit happened: %v\n", err)
+		if r.URL.Path == "/clear" {
+			ctrlch <- "clear"
+			http.Redirect(w, r, "/", 301)
+		} else if r.URL.Path == "/" {
+			handleIndex(querych, r.URL.Query().Get("q"), w)
 		}
 	}
 }
@@ -274,8 +288,9 @@ func main() {
 		log.Fatal("Could not consume", err)
 	}
 	querych := make(chan query)
-	go receive(querych, msgs, cfg)
-	http.HandleFunc("/", queryHandler(querych))
+	ctrlch := make(chan string)
+	go receive(querych, msgs, ctrlch, cfg)
+	http.HandleFunc("/", queryHandler(querych, ctrlch))
 	log.Printf("Listening on :%d, exchanges %v, routing key \"%s\"\n", cfg.port, cfg.exchanges, cfg.key)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.port), nil))
 }
