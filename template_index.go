@@ -50,7 +50,7 @@ tr {
 	<input type="text" name="q" size="80" value="{{.Query}}">
 	<input type="submit" value="Query">
 	</form>
-  <p>Use <code>key:&lt;routing-key&gt;</code> to search by routing key, <code>M:N</code> to filter by sequence number range, <code>*</code> to retrieve all messages. 
+  <p>Use <code>key:&lt;routing-key&gt;</code> to search by routing key (only exact matches), <code>M:N</code> to filter by sequence number range. Enter no query to retrieve all messages. 
   Everything else is interpreted as a search term of the message body.
   {{if .Frequencies}}
 	<h1>Frequencies</h1>
@@ -71,7 +71,7 @@ tr {
   <h1>Messages</h1>
   {{range .Messages}}
   <div class="message">
-    <div class="metainfo">{{DateFmt .Received}} ({{.Sender}}@{{DateFmt .Sent}}) (#{{.Seq}}) {{.RoutingKey}} {{.ClassName}} {{.CorrelationID}}</div>
+    <div class="metainfo">{{DateFmt .Received}} {{.Sender}} (#{{.Seq}}) <span>key:{{.RoutingKey}}</span></div>
     <div class="content">
       <div class="header"><pre>{{HeaderFmt .Headers}}</pre></div>
       <div class="body"><pre>{{MessageFmt .Body}}</pre></div>

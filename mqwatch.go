@@ -18,15 +18,12 @@ import (
 
 // message contains info about a single message, as stored in the in-mem buffer
 type message struct {
-	Seq           int64
-	Body          []byte
-	RoutingKey    string
-	Received      time.Time
-	Sent          time.Time
-	ClassName     string
-	Sender        string
-	Headers       amqp.Table
-	CorrelationID string
+	Seq        int64
+	Body       []byte
+	RoutingKey string
+	Received   time.Time
+	Sender     string
+	Headers    amqp.Table
 }
 
 // query contains the query text and the channel on which to send the query response
@@ -68,7 +65,7 @@ func parseSpec(input string) []querySpec {
 	exp := regexp.MustCompile(`(\w+):(.*)|#(\d+)?-(\d+)?`)
 	var result []querySpec
 	for _, line := range splt.Split(input, -1) {
-		spec := querySpec{seqTo: math.MaxInt64}
+		spec := querySpec{seqTo: math.MaxInt64, routingKey: "#"}
 		for _, tok := range ws.Split(line, -1) {
 			sm := exp.FindStringSubmatch(tok)
 			if sm != nil {
@@ -105,7 +102,7 @@ func accept1(m message, spec querySpec) bool {
 			return false
 		}
 	}
-	if !strings.Contains(m.RoutingKey, spec.routingKey) {
+	if spec.routingKey != "#" && spec.routingKey != m.RoutingKey {
 		return false
 	}
 	return true
@@ -153,9 +150,8 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, c
 			if err != nil {
 				log.Fatal("Could not marshal", err)
 			}
-			className, _ := msg.Headers["__ClassName__"].(string)
 			// Unfortunately, msg.Timestamp is empty, so we can't use it.
-			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), msg.Timestamp, className, msg.AppId, msg.Headers, msg.CorrelationId})
+			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), msg.AppId, msg.Headers})
 			seq++
 			l := len(buf)
 			if l > maxBuf {
@@ -164,7 +160,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, c
 		case q := <-reqs:
 			log.Printf("Processing query: %s\n", q.rawQuery)
 			var r []message
-			if string(q.rawQuery) == "*" {
+			if string(q.rawQuery) == "" {
 				l := cfg.maxResults
 				if len(buf) < l {
 					l = len(buf)
@@ -207,13 +203,9 @@ func frequencies(ms []message) map[string]int {
 
 func handleIndex(querych chan<- query, reqStr string, w http.ResponseWriter) {
 	var result queryResult
-	if len(reqStr) < 3 && reqStr != "*" && reqStr != "" {
-		log.Printf("Request string too short: %s\n", reqStr)
-	} else if reqStr != "" {
-		respch := make(chan queryResult)
-		querych <- query{reqStr, parseSpec(reqStr), respch}
-		result = <-respch
-	}
+	respch := make(chan queryResult)
+	querych <- query{reqStr, parseSpec(reqStr), respch}
+	result = <-respch
 	t := templateIndexHTML()
 	w.Header().Set("Content-Type", "text/html")
 	err := t.Execute(w, indexHTMLContent{
