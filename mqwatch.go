@@ -201,7 +201,7 @@ func frequencies(ms []message) map[string]int {
 	return freq
 }
 
-func handleIndex(querych chan<- query, reqStr string, w http.ResponseWriter) {
+func handleIndex(cfg config, querych chan<- query, reqStr string, w http.ResponseWriter) {
 	var result queryResult
 	respch := make(chan queryResult)
 	querych <- query{reqStr, parseSpec(reqStr), respch}
@@ -211,6 +211,7 @@ func handleIndex(querych chan<- query, reqStr string, w http.ResponseWriter) {
 	err := t.Execute(w, indexHTMLContent{
 		Created:       time.Now(),
 		Frequencies:   frequencies(result.messages),
+		Exchanges:     cfg.exchanges,
 		Messages:      result.messages,
 		Query:         reqStr,
 		ReceivedTotal: result.seq})
@@ -219,13 +220,13 @@ func handleIndex(querych chan<- query, reqStr string, w http.ResponseWriter) {
 	}
 }
 
-func queryHandler(querych chan<- query, ctrlch chan<- string) func(http.ResponseWriter, *http.Request) {
+func queryHandler(cfg config, querych chan<- query, ctrlch chan<- string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/clear" {
 			ctrlch <- "clear"
 			http.Redirect(w, r, "/", 301)
 		} else if r.URL.Path == "/" {
-			handleIndex(querych, r.URL.Query().Get("q"), w)
+			handleIndex(cfg, querych, r.URL.Query().Get("q"), w)
 		}
 	}
 }
@@ -282,7 +283,7 @@ func main() {
 	querych := make(chan query)
 	ctrlch := make(chan string)
 	go receive(querych, msgs, ctrlch, cfg)
-	http.HandleFunc("/", queryHandler(querych, ctrlch))
+	http.HandleFunc("/", queryHandler(cfg, querych, ctrlch))
 	log.Printf("Listening on :%d, exchanges %v, routing key \"%s\"\n", cfg.port, cfg.exchanges, cfg.key)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.port), nil))
 }

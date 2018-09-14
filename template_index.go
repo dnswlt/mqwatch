@@ -41,7 +41,7 @@ tr {
   </style>
 </head>
 <body>
-  Timestamp: {{DateFmt .Created}}, Total messages received: {{.ReceivedTotal}}
+  Timestamp: {{DateFmt .Created}}, Total messages received: {{.ReceivedTotal}}, Listening on exchanges: {{.Exchanges}}
   <form class="simplebutton" method="POST" action="/clear">
     <input type="submit" name="submit" value="Clear">
   </form>
@@ -89,6 +89,7 @@ tr {
 type indexHTMLContent struct {
 	Created       time.Time
 	Frequencies   map[string]int
+	Exchanges     []string
 	Messages      []message
 	Query         string
 	ReceivedTotal int64
