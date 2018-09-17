@@ -1,0 +1,44 @@
+﻿apiVersion: v1
+kind: BuildConfig
+metadata:
+  creationTimestamp: 2018-09-14T11:51:36Z
+  name: mqwatch
+  namespace: pn-tms
+  resourceVersion: "732420171"
+  selfLink: /oapi/v1/namespaces/pn-tms/buildconfigs/mqwatch
+  uid: 88b196c4-b814-11e8-9a7e-1402ec40cda4
+spec:
+  nodeSelector: null
+  output:
+    to:
+      kind: ImageStreamTag
+      name: mqwatch:latest
+  postCommit: {}
+  resources: {}
+  runPolicy: Serial
+  source:
+    dockerfile: "FROM alpine:3.8\nWORKDIR /mqwatch/\nCOPY mqwatch .\nCOPY mqwatch.sh
+      .\nRUN chmod -R g+rx .\n    \nEXPOSE 9090\nENTRYPOINT [\"/bin/sh\", \"./mqwatch.sh\"]"
+    images:
+    - from:
+        kind: ImageStreamTag
+        name: mqwatch-compile:latest
+      paths:
+      - destinationDir: .
+        sourcePath: /go/src/github.com/dnswlt/mqwatch/mqwatch
+      - destinationDir: .
+        sourcePath: /go/src/github.com/dnswlt/mqwatch/mqwatch.sh
+    type: Dockerfile
+  strategy:
+    dockerStrategy:
+      forcePull: true
+      from:
+        kind: ImageStreamTag
+        name: mqwatch-compile:latest
+    type: Docker
+  triggers:
+  - imageChange:
+      lastTriggeredImageID: 172.30.128.186:5000/pn-tms/mqwatch-compile@sha256:d07394ace1f80c00ef6a7650d9ea1a959127f19d33eaca4a6b58241e76b6bfa2
+    type: ImageChange
+status:
+  lastVersion: 20

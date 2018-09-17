@@ -1,0 +1,42 @@
+﻿apiVersion: v1
+kind: BuildConfig
+metadata:
+  creationTimestamp: 2018-09-14T11:36:55Z
+  name: mqwatch-compile-stage
+  namespace: pn-tms
+  resourceVersion: "732418870"
+  selfLink: /oapi/v1/namespaces/pn-tms/buildconfigs/mqwatch-compile-stage
+  uid: 7b5f2264-b812-11e8-9a7e-1402ec40cda4
+spec:
+  nodeSelector: null
+  output:
+    to:
+      kind: ImageStreamTag
+      name: mqwatch-compile:latest
+  postCommit: {}
+  resources: {}
+  runPolicy: Serial
+  source:
+    dockerfile: |
+      FROM golang:1.10.1
+
+      COPY . /go/src/github.com/dnswlt/mqwatch/
+      WORKDIR /go/src/github.com/dnswlt/mqwatch/
+      RUN set -x && \
+          go get github.com/golang/dep/cmd/dep && \
+          dep ensure -v
+
+      RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o mqwatch .
+      RUN ls -l
+
+      ENTRYPOINT ["sleep", "1800"]
+    git:
+      ref: development
+      uri: http://github.com/ohneeszett/mqwatch.git
+    type: Git
+  strategy:
+    dockerStrategy: {}
+    type: Docker
+  triggers: []
+status:
+  lastVersion: 16
