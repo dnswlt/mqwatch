@@ -47,6 +47,7 @@ type querySpec struct {
 type queryResult struct {
 	messages []message
 	seq      int64
+	bufSize  int
 }
 
 // config contains all configurable parameters of the application
@@ -57,6 +58,14 @@ type config struct {
 	port       int
 	bufferSize int
 	maxResults int
+}
+
+// receiverChannels bundles all channels that the receiver goroutine needs
+type receiverChannels struct {
+	reqs  chan query
+	msgs  <-chan amqp.Delivery
+	ctrl  chan string
+	dumps chan chan []message
 }
 
 func parseSpec(input string) []querySpec {
@@ -117,7 +126,7 @@ func accept(m message, specs []querySpec) bool {
 	return false
 }
 
-func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, cfg config) {
+func receive(cs receiverChannels, cfg config) {
 
 	var reverse = func(buf []message) {
 		for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
@@ -130,7 +139,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, c
 	maxBuf := int(float64(cfg.bufferSize) * 1.2)
 	for {
 		select {
-		case cmd := <-ctrl:
+		case cmd := <-cs.ctrl:
 			switch cmd {
 			case "clear":
 				l := len(buf)
@@ -139,7 +148,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, c
 			default:
 				log.Printf("Unknown control command %s\n", cmd)
 			}
-		case msg := <-msgs:
+		case msg := <-cs.msgs:
 			var m interface{}
 			err := json.Unmarshal(msg.Body, &m)
 			if err != nil {
@@ -157,7 +166,7 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, c
 			if l > maxBuf {
 				buf = buf[l-cfg.bufferSize:]
 			}
-		case q := <-reqs:
+		case q := <-cs.reqs:
 			log.Printf("Processing query: %s\n", q.rawQuery)
 			var r []message
 			if string(q.rawQuery) == "" {
@@ -178,7 +187,11 @@ func receive(reqs <-chan query, msgs <-chan amqp.Delivery, ctrl <-chan string, c
 				}
 				reverse(r)
 			}
-			q.respch <- queryResult{messages: r, seq: seq}
+			q.respch <- queryResult{messages: r, seq: seq, bufSize: len(buf)}
+		case dc := <-cs.dumps:
+			bufCopy := make([]message, len(buf))
+			copy(bufCopy, buf)
+			dc <- bufCopy
 		}
 	}
 }
@@ -214,19 +227,37 @@ func handleIndex(cfg config, querych chan<- query, reqStr string, w http.Respons
 		Exchanges:     cfg.exchanges,
 		Messages:      result.messages,
 		Query:         reqStr,
-		ReceivedTotal: result.seq})
+		ReceivedTotal: result.seq,
+		BufferSize:    result.bufSize})
 	if err != nil {
 		log.Printf("Shit happened: %v\n", err)
 	}
 }
 
-func queryHandler(cfg config, querych chan<- query, ctrlch chan<- string) func(http.ResponseWriter, *http.Request) {
+func handleDump(dumpch chan<- chan []message, w http.ResponseWriter) {
+	d := make(chan []message)
+	dumpch <- d
+	msgs := <-d
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("[\n"))
+	for i, m := range msgs {
+		if i > 0 {
+			w.Write([]byte(",\n"))
+		}
+		w.Write(m.Body)
+	}
+	w.Write([]byte("\n]\n"))
+}
+
+func queryHandler(cfg config, cs receiverChannels) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/clear" {
-			ctrlch <- "clear"
+			cs.ctrl <- "clear"
 			http.Redirect(w, r, "/", 301)
+		} else if r.URL.Path == "/dump" {
+			handleDump(cs.dumps, w)
 		} else if r.URL.Path == "/" {
-			handleIndex(cfg, querych, r.URL.Query().Get("q"), w)
+			handleIndex(cfg, cs.reqs, r.URL.Query().Get("q"), w)
 		}
 	}
 }
@@ -282,8 +313,10 @@ func main() {
 	}
 	querych := make(chan query)
 	ctrlch := make(chan string)
-	go receive(querych, msgs, ctrlch, cfg)
-	http.HandleFunc("/", queryHandler(cfg, querych, ctrlch))
+	dumpch := make(chan chan []message)
+	channels := receiverChannels{querych, msgs, ctrlch, dumpch}
+	go receive(channels, cfg)
+	http.HandleFunc("/", queryHandler(cfg, channels))
 	log.Printf("Listening on :%d, exchanges %v, routing key \"%s\"\n", cfg.port, cfg.exchanges, cfg.key)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.port), nil))
 }
