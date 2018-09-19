@@ -32,7 +32,7 @@ spec:
       ENTRYPOINT ["sleep", "1800"]
     git:
       ref: development
-      uri: http://github.com/ohneeszett/mqwatch.git
+      uri: http://github.com/dnswlt/mqwatch.git
     type: Git
   strategy:
     dockerStrategy: {}
