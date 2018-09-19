@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
+	_ "net/http/pprof"
 	"regexp"
 	"strconv"
 	"strings"
@@ -52,12 +52,13 @@ type queryResult struct {
 
 // config contains all configurable parameters of the application
 type config struct {
-	url        string
-	exchanges  []string
-	key        string
-	port       int
-	bufferSize int
-	maxResults int
+	url         string
+	exchanges   []string
+	key         string
+	port        int
+	bufferSize  int
+	maxResults  int
+	prettyPrint bool
 }
 
 // receiverChannels bundles all channels that the receiver goroutine needs
@@ -127,16 +128,13 @@ func accept(m message, specs []querySpec) bool {
 }
 
 func receive(cs receiverChannels, cfg config) {
-
-	var reverse = func(buf []message) {
+	reverse := func(buf []message) {
 		for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
 			buf[i], buf[j] = buf[j], buf[i]
 		}
 	}
-
-	var buf []message
-	var seq int64
-	maxBuf := int(float64(cfg.bufferSize) * 1.2)
+	buf := []message{}
+	seq := int64(0)
 	for {
 		select {
 		case cmd := <-cs.ctrl:
@@ -149,21 +147,11 @@ func receive(cs receiverChannels, cfg config) {
 				log.Printf("Unknown control command %s\n", cmd)
 			}
 		case msg := <-cs.msgs:
-			var m interface{}
-			err := json.Unmarshal(msg.Body, &m)
-			if err != nil {
-				log.Printf("Could not Unmarshal: %s\n\"%s\"\n", string(msg.Body), err)
-				break
-			}
-			js, err := json.Marshal(m)
-			if err != nil {
-				log.Fatal("Could not marshal", err)
-			}
 			// Unfortunately, msg.Timestamp is empty, so we can't use it.
-			buf = append(buf, message{seq, js, msg.RoutingKey, time.Now(), msg.AppId, msg.Headers})
+			buf = append(buf, message{seq, msg.Body, msg.RoutingKey, time.Now(), msg.AppId, msg.Headers})
 			seq++
 			l := len(buf)
-			if l > maxBuf {
+			if l > cfg.bufferSize {
 				buf = buf[l-cfg.bufferSize:]
 			}
 		case q := <-cs.reqs:
@@ -219,7 +207,7 @@ func handleIndex(cfg config, querych chan<- query, reqStr string, w http.Respons
 	respch := make(chan queryResult)
 	querych <- query{reqStr, parseSpec(reqStr), respch}
 	result = <-respch
-	t := templateIndexHTML()
+	t := templateIndexHTML(cfg.prettyPrint)
 	w.Header().Set("Content-Type", "text/html")
 	err := t.Execute(w, indexHTMLContent{
 		Created:       time.Now(),
@@ -262,25 +250,38 @@ func queryHandler(cfg config, cs receiverChannels) func(http.ResponseWriter, *ht
 	}
 }
 
-func parseArgs() config {
+func parseArgs() (config, error) {
 	url := flag.String("url", "amqp://localhost:5672/", "URL to connect to")
 	exchange := flag.String("exchange", "lenkung", "Exchange(s) to bind to (comma separated)")
 	key := flag.String("key", "#", "Routing key to use in queue binding")
 	port := flag.Int("port", 9090, "TCP port web UI")
 	buf := flag.Int("buf", 100000, "Number of messages kept in memory")
 	maxresult := flag.Int("maxresult", 1000, "Max. number of messages returned for query")
+	pprint := flag.Bool("pprint", false, "Pretty-print JSON message body")
 	flag.Parse()
+	if len(flag.Args()) != 0 {
+		return config{}, fmt.Errorf("Unexpected arguments %v", flag.Args())
+	}
 	var exchanges []string
 	if strings.Contains(*exchange, ",") {
 		exchanges = strings.Split(*exchange, ",")
 	} else {
 		exchanges = append(exchanges, *exchange)
 	}
-	return config{url: *url, exchanges: exchanges, key: *key, port: *port, bufferSize: *buf, maxResults: *maxresult}
+	return config{url: *url, exchanges: exchanges, key: *key, port: *port, bufferSize: *buf, maxResults: *maxresult, prettyPrint: *pprint}, nil
 }
 
 func main() {
-	cfg := parseArgs()
+	// profOut, err := os.Create("mqwatch.prof")
+	// if err != nil {
+	// 	log.Fatal("Could not create profiling file mqwatch.prof")
+	// }
+	// pprof.StartCPUProfile(profOut)
+	// defer pprof.StopCPUProfile()
+	cfg, err := parseArgs()
+	if err != nil {
+		log.Fatal(err)
+	}
 	conn, err := amqp.Dial(cfg.url)
 	if err != nil {
 		log.Fatal("Could not connect", err)

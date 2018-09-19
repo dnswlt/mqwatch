@@ -11,10 +11,18 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// MessageFmt formats a RabbitMQ JSON message by indenting it.
+// MessageFmt formats a RabbitMQ message by returing it as-is.
 func MessageFmt(bs []byte) string {
+	return string(bs)
+}
+
+// MessageFmtIndented formats a RabbitMQ JSON message by indenting it.
+func MessageFmtIndented(bs []byte) string {
 	var out bytes.Buffer
-	json.Indent(&out, bs, "", "  ")
+	err := json.Indent(&out, bs, "", "  ")
+	if err != nil {
+		return string(bs)
+	}
 	return out.String()
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestIndexHtml(t *testing.T) {
-	tpl := templateIndexHTML()
+	tpl := templateIndexHTML(false)
 	tm := time.Date(2018, 1, 31, 18, 59, 30, 123456789, time.Local)
 	buf := new(bytes.Buffer)
 	headers := make(map[string]interface{})

@@ -102,10 +102,14 @@ type indexHTMLContent struct {
 }
 
 // templateIndexHTML returns the template for the index.html page.
-func templateIndexHTML() *template.Template {
+func templateIndexHTML(prettyPrint bool) *template.Template {
+	messageFmt := MessageFmt
+	if prettyPrint {
+		messageFmt = MessageFmtIndented
+	}
 	return template.Must(template.New("index.html").
 		Funcs(template.FuncMap{
-			"MessageFmt": MessageFmt,
+			"MessageFmt": messageFmt,
 			"HeaderFmt":  HeaderFmt,
 			"DateFmt":    DateFmt,
 		}).
