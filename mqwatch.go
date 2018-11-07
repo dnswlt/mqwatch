@@ -282,33 +282,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	conn, err := amqp.Dial(cfg.url)
-	if err != nil {
-		log.Fatal("Could not connect", err)
-	} else {
-		log.Printf("Connected to %s\n", cfg.url)
-	}
-	defer conn.Close()
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal("Could not get a channel", err)
-	}
-	defer ch.Close()
-	q, err := ch.QueueDeclare("", false, true, true, false, nil)
-	if err != nil {
-		log.Fatal("Could not declare queue", err)
-	}
-	for _, exchange := range cfg.exchanges {
-		err = ch.ExchangeDeclare(exchange, "topic", false, false, false, false, nil)
-		if err != nil {
-			log.Fatal("Could not declare topic exchange", err)
-		}
-		err = ch.QueueBind(q.Name, cfg.key, exchange, false, nil)
-		if err != nil {
-			log.Fatal("Could not bind queue", err)
-		}
-	}
-	msgs, err := ch.Consume(q.Name, "", true, false, false, false, nil)
+	msgs := make(chan amqp.Delivery, 100)
 	if err != nil {
 		log.Fatal("Could not consume", err)
 	}
